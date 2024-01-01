@@ -1011,7 +1011,6 @@ local enum TypeName
    "integer"
    "union"
    "nominal"
-   "bad_nominal"
    "emptytable"
    "table_item"
    "unresolved_emptytable_value"
@@ -1049,7 +1048,6 @@ local table_types <total>: {TypeName:boolean} = {
    ["integer"] = false,
    ["union"] = false,
    ["nominal"] = false,
-   ["bad_nominal"] = false,
    ["table_item"] = false,
    ["unresolved_emptytable_value"] = false,
    ["unresolved_typearg"] = false,
@@ -4863,7 +4861,6 @@ function tl.pretty_print_ast(ast: Node, gen_target: TargetMode, mode: boolean | 
    visit_type.cbs["integer"] = default_type_visitor
    visit_type.cbs["union"] = default_type_visitor
    visit_type.cbs["nominal"] = default_type_visitor
-   visit_type.cbs["bad_nominal"] = default_type_visitor
    visit_type.cbs["emptytable"] = default_type_visitor
    visit_type.cbs["table_item"] = default_type_visitor
    visit_type.cbs["unresolved_emptytable_value"] = default_type_visitor
@@ -4917,7 +4914,6 @@ local typename_to_typecode <total>: {TypeName:integer} = {
    ["integer"] = tl.typecodes.INTEGER,
    ["union"] = tl.typecodes.IS_UNION,
    ["nominal"] = tl.typecodes.NOMINAL,
-   ["bad_nominal"] = tl.typecodes.NOMINAL,
    ["circular_require"] = tl.typecodes.NOMINAL,
    ["emptytable"] = tl.typecodes.EMPTY_TABLE,
    ["unresolved_emptytable_value"] = tl.typecodes.EMPTY_TABLE,
@@ -5504,8 +5500,6 @@ local function show_type_base(t: Type, short: boolean, seen: {Type:string}): str
       return ""
    elseif is_typetype(t) then
       return "type " .. show(t.def) .. (t.is_alias and " (alias)" or "")
-   elseif t.typename == "bad_nominal" then
-      return table.concat(t.names, ".") .. " (an unknown type)"
    else
       return "<" .. t.typename .. " " .. tostring(t) .. ">"
    end
@@ -7304,29 +7298,32 @@ tl.type_check = function(ast: Node, opts: TypeCheckOptions): Result, string
          if not typetype then
             error_at(t, "unknown type %s", t)
             return INVALID
-         elseif is_typetype(typetype) then
-            if typetype.is_alias then
-               typetype = typetype.def.found
-               assert(is_typetype(typetype))
-            end
-
-            if typetype.def.typename == "circular_require" then
-               -- return, but do not store resolution
-               return typetype.def
-            end
-
-            if typetype.def.typename == "nominal" then
-               typetype = typetype.def.found
-               assert(is_typetype(typetype))
-            end
-            assert(typetype.def.typename ~= "nominal")
-            resolved = match_typevals(t, typetype.def)
-         else
-            error_at(t, table.concat(t.names, ".") .. " is not a type")
          end
 
+         if not is_typetype(typetype) then
+            error_at(t, table.concat(t.names, ".") .. " is not a type")
+            return INVALID
+         end
+
+         if typetype.is_alias then
+            typetype = typetype.def.found
+            assert(is_typetype(typetype))
+         end
+
+         if typetype.def.typename == "circular_require" then
+            -- return, but do not store resolution
+            return typetype.def
+         end
+
+         if typetype.def.typename == "nominal" then
+            typetype = typetype.def.found
+            assert(is_typetype(typetype))
+         end
+         assert(typetype.def.typename ~= "nominal")
+         resolved = match_typevals(t, typetype.def)
          if not resolved then
-            resolved = a_type("bad_nominal", { names = t.names })
+            error_at(t, table.concat(t.names, ".") .. " cannot be resolved in scope")
+            return INVALID
          end
 
          if not t.filename then
@@ -7507,10 +7504,6 @@ tl.type_check = function(ast: Node, opts: TypeCheckOptions): Result, string
 
    local function is_self(t: Type): boolean
       return t.typename == "nominal" and t.names[1] == "@self"
-   end
-
-   local function compare_false(_: Type, _: Type): boolean, {Error}
-      return false
    end
 
    local function compare_true(_: Type, _: Type): boolean, {Error}
@@ -7715,9 +7708,6 @@ tl.type_check = function(ast: Node, opts: TypeCheckOptions): Result, string
 
    local eqtype_relations: TypeRelations
    eqtype_relations = {
-      ["bad_nominal"] = {
-         ["*"] = compare_false,
-      },
       ["typevar"] = {
          ["typevar"] = function(a: TypeVarType, b: TypeVarType): boolean, {Error}
             if a.typevar == b.typevar then
@@ -7791,7 +7781,6 @@ tl.type_check = function(ast: Node, opts: TypeCheckOptions): Result, string
          end,
       },
       ["*"] = {
-         ["bad_nominal"] = compare_false,
          ["typevar"] = function(a: Type, b: TypeVarType): boolean, {Error}
             return compare_or_infer_typevar(b.typevar, a, nil, same_type)
          end,
@@ -7800,9 +7789,6 @@ tl.type_check = function(ast: Node, opts: TypeCheckOptions): Result, string
 
    local subtype_relations: TypeRelations
    subtype_relations = {
-      ["bad_nominal"] = {
-         ["*"] = compare_false,
-      },
       ["tuple"] = {
          ["tuple"] = function(a: TupleType, b: TupleType): boolean, {Error}  -- ∀ a[i] ∈ a, b[i] ∈ b. a[i] <: b[i]
             local at, bt = a.tuple, b.tuple                                  -- ──────────────────────────────────
@@ -8086,7 +8072,6 @@ tl.type_check = function(ast: Node, opts: TypeCheckOptions): Result, string
          end,
       },
       ["*"] = {
-         ["bad_nominal"] = compare_false,
          ["any"] = compare_true,
          ["tuple"] = function(a: Type, b: Type): boolean, {Error}
             return is_a(a_tuple({a}), b)
@@ -8117,7 +8102,6 @@ tl.type_check = function(ast: Node, opts: TypeCheckOptions): Result, string
    -- evaluation strategy
    local type_priorities: {TypeName:integer} = {
       -- types that have catch-all rules evaluate first
-      ["bad_nominal"] = 1,
       ["tuple"] = 2,
       ["typevar"] = 3,
       ["nil"] = 4,
@@ -9808,7 +9792,7 @@ tl.type_check = function(ast: Node, opts: TypeCheckOptions): Result, string
             resolved = find_type(names)
             if (not resolved) or (not is_typetype(resolved)) then
                error_at(typetype, "%s is not a type", typetype)
-               resolved = a_type("bad_nominal", { names = names })
+               resolved = INVALID
             end
          end
          return resolved, aliasing
@@ -11951,7 +11935,6 @@ tl.type_check = function(ast: Node, opts: TypeCheckOptions): Result, string
    visit_type.cbs["number"] = default_type_visitor
    visit_type.cbs["integer"] = default_type_visitor
    visit_type.cbs["thread"] = default_type_visitor
-   visit_type.cbs["bad_nominal"] = default_type_visitor
    visit_type.cbs["emptytable"] = default_type_visitor
    visit_type.cbs["table_item"] = default_type_visitor
    visit_type.cbs["unresolved_emptytable_value"] = default_type_visitor
