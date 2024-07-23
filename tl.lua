@@ -6293,6 +6293,7 @@ local equality_binop = {
 
 local unop_types = {
    ["#"] = {
+      ["enum"] = "integer",
       ["string"] = "integer",
       ["array"] = "integer",
       ["tupletable"] = "integer",
