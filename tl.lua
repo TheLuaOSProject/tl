@@ -12277,22 +12277,38 @@ self:expand_type(node, values, elements) })
       end,
    }
 
+   function TypeChecker:begin_temporary_record_types(typ)
+      self:add_var(nil, "@self", type_at(typ, a_type(typ, "typedecl", { def = typ })))
+
+      for fname, ftype in fields_of(typ) do
+         if ftype.typename == "typealias" then
+            self:resolve_nominal(ftype.alias_to)
+            self:add_var(nil, fname, ftype)
+         elseif ftype.typename == "typedecl" then
+            self:add_var(nil, fname, ftype)
+         end
+      end
+   end
+
+   function TypeChecker:end_temporary_record_types(typ)
+
+
+      local scope = self.st[#self.st]
+      scope.vars["@self"] = nil
+      for fname, ftype in fields_of(typ) do
+         if ftype.typename == "typealias" or ftype.typename == "typedecl" then
+            scope.vars[fname] = nil
+         end
+      end
+   end
+
    local visit_type
    visit_type = {
       cbs = {
          ["record"] = {
             before = function(self, typ)
                self:begin_scope()
-               self:add_var(nil, "@self", type_at(typ, a_type(typ, "typedecl", { def = typ })))
-
-               for fname, ftype in fields_of(typ) do
-                  if ftype.typename == "typealias" then
-                     self:resolve_nominal(ftype.alias_to)
-                     self:add_var(nil, fname, ftype)
-                  elseif ftype.typename == "typedecl" then
-                     self:add_var(nil, fname, ftype)
-                  end
-               end
+               self:begin_temporary_record_types(typ)
             end,
             after = function(self, typ, children)
                local i = 1
@@ -12386,6 +12402,7 @@ self:expand_type(node, values, elements) })
                   end
                end
 
+               self:end_temporary_record_types(typ)
                self:end_scope()
 
                return typ
