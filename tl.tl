@@ -1964,7 +1964,7 @@ end
 
 local type Attribute = string
 
-local attributes: {Attribute: boolean} = setmetatable({}, { __index = function() return true end })
+local attributes: {Attribute: boolean} = setmetatable({}, { __index = function(): boolean return true end })
 local is_attribute <const>: {string:boolean} = attributes as {string:boolean}
 
 local record Node
