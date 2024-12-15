@@ -1,5 +1,5 @@
 
-local VERSION = "0.15.3+dev"
+local VERSION = "0.15.3+dev+teal-compiler"
 
 local stdlib = [=====[
 
@@ -7,6 +7,11 @@ do
    global type any
    global type thread
    global type userdata
+
+   global record c
+      type int32_t = integer
+      type varadict = any
+   end
 
    local enum FileStringMode
       "a" "l" "L" "*a" "*l" "*L"
@@ -1957,17 +1962,9 @@ local enum KeyParsed
    "implicit"
 end
 
-local enum Attribute
-   "const"
-   "close"
-   "total"
-end
+local type Attribute = string
 
-local attributes <total>: {Attribute: boolean} = {
-   ["const"] = true,
-   ["close"] = true,
-   ["total"] = true,
-}
+local attributes: {Attribute: boolean} = setmetatable({}, { __index = function() return true end })
 local is_attribute <const>: {string:boolean} = attributes as {string:boolean}
 
 local record Node
@@ -4974,11 +4971,11 @@ function tl.pretty_print_ast(ast: Node, gen_target: GenTarget, mode?: boolean | 
 
    local visit_node: Visitor<nil, NodeKind, Node, Output> = {}
 
-   local lua_54_attribute <total>: {Attribute:string} = {
+   local lua_54_attribute: {Attribute:string} = setmetatable({
       ["const"] = " <const>",
       ["close"] = " <close>",
       ["total"] = " <const>",
-   }
+   }, { __index = function(_, _): string return " <const>" end })
 
    local function emit_exactly(_: nil, node: Node, _children: {Output}): Output
       local out: Output = { y = node.y, h = 0 }
